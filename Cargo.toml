@@ -1,0 +1,8 @@
+[package]
+name = "csve"
+version = "0.1.0"
+authors = ["Rok Fajfar <snewix7@gmail.com>"]
+
+[dependencies]
+termion = "*"
+csv = "*"
