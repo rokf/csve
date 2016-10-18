@@ -16,6 +16,13 @@ enum Operation {
     NoOp,
     Editing,
     GoingTo,
+    Resizing,
+}
+
+#[derive(PartialEq)]
+enum SaveState {
+    Edited,
+    Saved,
 }
 
 struct State {
@@ -26,6 +33,9 @@ struct State {
     cell_size: usize,
     editor_buffer : String,
     op : Operation,
+    save_state : SaveState,
+    goto_buffer : String,
+    resize_buffer : String,
 }
 
 use termion::{color, cursor, clear};
@@ -128,13 +138,50 @@ fn draw_editor(stdout : &mut std::io::Stdout, state: &State) {
     write!(stdout, "{}Editor: {}",cursor::Goto(2,height-2), state.editor_buffer);
 }
 
+fn draw_goto(stdout : &mut std::io::Stdout, state: &State) {
+    let (width, height) = termion::terminal_size().unwrap();
+    write!(stdout, "{}Going to: {}",cursor::Goto(2,height-2), state.goto_buffer);
+}
+
+fn draw_resize(stdout : &mut std::io::Stdout, state: &State) {
+    let (width, height) = termion::terminal_size().unwrap();
+    write!(stdout, "{}New size: {}",cursor::Goto(2,height-2), state.resize_buffer);
+}
+
+fn draw_save_state(stdout : &mut std::io::Stdout, state: &State) {
+    let (width, height) = termion::terminal_size().unwrap();
+    match state.save_state {
+        SaveState::Edited => {
+            write!(stdout, "{}edited",cursor::Goto(width-6,height-2));
+        },
+        SaveState::Saved => {
+            write!(stdout, "{}saved",cursor::Goto(width-6,height-2));
+        },
+    }
+}
+
 fn draw_window(stdout : &mut std::io::Stdout, state: &State) {
     write!(stdout,"{}{}",clear::All, cursor::Goto(1,1)).unwrap();
     draw_header(stdout, state);
     draw_body(stdout, state);
     if state.op == Operation::Editing {
         draw_editor(stdout, state);
+    } else if state.op == Operation::GoingTo {
+        draw_goto(stdout, state);
+    } else if state.op == Operation::Resizing {
+        draw_resize(stdout, state);
     }
+    draw_save_state(stdout, state);
+}
+
+fn resize_data(data: &mut Vec<Vec<String>>, width: usize, height: usize) {
+    let row_number = data.len();
+    let col_number = data[0].len();
+    // let mut data_copy : Vec<Vec<String>> = data.iter().map(|d| d.resize(width, "/".to_string()) ).collect::<Vec<Vec<String>>>();
+    for row in &mut data.iter_mut() {
+        row.resize(width, "/".to_string());
+    }
+    data.resize(height, vec!["/".to_string() ; width]);
 }
 
 fn main() {
@@ -147,12 +194,29 @@ fn main() {
         cell_size: 20,
         editor_buffer: "".to_string(),
         op: Operation::NoOp,
+        save_state: SaveState::Saved,
+        goto_buffer : "".to_string(),
+        resize_buffer : "".to_string(),
     };
     let args : Vec<String> = env::args().collect();
+    if args.len() < 2 {
+        return ()
+    }
     let ref filename : String = args[1];
     state.filename = filename.to_string();
-    let mut read_data = coms::read(Path::new(filename));
-    state.data.append(&mut read_data);
+
+    if coms::check(Path::new(filename)) {
+        // file exists
+        let mut read_data = coms::read(Path::new(filename));
+        state.data.append(&mut read_data);
+    } else {
+        // file does not exist
+        let mut temporary_data : Vec<Vec<String>> = vec![];
+        temporary_data.push(vec!["Empty".to_string()]);
+        temporary_data.push(vec!["0".to_string()]);
+        state.data.append(&mut temporary_data);
+    }
+
     let stdin = stdin();
     let mut stdout = stdout().into_raw_mode().unwrap();
     write!(stdout, "{}", cursor::Hide).unwrap();
@@ -172,21 +236,67 @@ fn main() {
                     state.op = Operation::NoOp;
                     let (x,y) = state.field;
                     state.data[y as usize][x as usize] = state.editor_buffer.to_string();
+                    state.save_state = SaveState::Edited;
                 }
             },
+            Key::Ctrl('u') => {
+                if state.op == Operation::Editing {
+                    state.editor_buffer.clear();
+                }
+            }
+            Key::Ctrl('g') => { // goto
+                if state.op == Operation::NoOp {
+                    state.op = Operation::GoingTo;
+                    state.goto_buffer.clear();
+                } else if state.op == Operation::GoingTo {
+                    state.op = Operation::NoOp;
+                    let params : Vec<&str> = state.goto_buffer.split(",").collect();
+                    let nums : Vec<u32> = params.iter().map(|p| {p.parse::<u32>().unwrap()}).collect();
+                    if nums.len() == 2 {
+                        state.field = (nums[0], nums[1]);
+                    } else {
+                        println!("GOTO: Not enough parameters.");
+                    }
+                }
+            },
+            Key::Ctrl('r') => {
+                // resize
+                if state.op == Operation::NoOp {
+                    state.op = Operation::Resizing;
+                    state.resize_buffer.clear();
+                } else if state.op == Operation::Resizing {
+                    state.op = Operation::NoOp;
+                    // resize here
+                    let params : Vec<&str> = state.resize_buffer.split(",").collect();
+                    let nums : Vec<usize> = params.iter().map(|p| {p.parse::<usize>().unwrap()}).collect();
+                    if nums.len() == 2 {
+                        resize_data(&mut state.data, nums[0], nums[1])
+                    } else {
+                        println!("RESIZE: Wrong number of parameters.");
+                    }
+                }
+            }
             Key::Char(c) => {
                 if state.op == Operation::Editing {
                     state.editor_buffer.push(c);
+                } else if state.op == Operation::GoingTo {
+                    state.goto_buffer.push(c);
+                } else if state.op == Operation::Resizing {
+                    state.resize_buffer.push(c);
                 }
             },
             Key::Backspace => {
                 if state.op == Operation::Editing {
                     state.editor_buffer.pop();
+                } else if state.op == Operation::GoingTo {
+                    state.goto_buffer.pop();
+                } else if state.op == Operation::Resizing {
+                    state.resize_buffer.pop();
                 }
             },
-            Key::Ctrl('s') => {
-                // save
-                ()
+            Key::Ctrl('s') => { // save
+                coms::write(&state.data, Path::new(filename));
+                state.save_state = SaveState::Saved;
             }
             Key::Left => {
                 if state.field.0 > 0 && state.op == Operation::NoOp {

@@ -19,3 +19,15 @@ pub fn write(lines: &Vec<Vec<String>>, filename : &Path) {
         writer.encode(record);
     }
 }
+
+// check if the file already exists
+pub fn check(filename : &Path) -> bool {
+    match File::open(filename) {
+        Ok(file) => {
+            true
+        },
+        err => {
+            false
+        },
+    }
+}
