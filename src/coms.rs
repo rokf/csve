@@ -16,14 +16,14 @@ pub fn read(filename : &Path) -> Vec<Vec<String>> {
 pub fn write(lines: &Vec<Vec<String>>, filename : &Path) {
     let mut writer = csv::Writer::from_file(filename).unwrap();
     for record in lines.iter() {
-        writer.encode(record);
+        writer.encode(record).unwrap();
     }
 }
 
 // check if the file already exists
 pub fn check(filename : &Path) -> bool {
     match File::open(filename) {
-        Ok(file) => true,
-        err => false,
+        Ok(_) => true,
+        _ => false,
     }
 }

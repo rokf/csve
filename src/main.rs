@@ -36,14 +36,13 @@ struct State {
     save_state : SaveState,
     goto_buffer : String,
     resize_buffer : String,
-    rect : (u16, u16, u16, u16),
 }
 
 use termion::{color, cursor, clear};
 
 fn draw_mid_line(stdout : &mut std::io::Stdout, len : usize, state: &State) {
     let mut line : String = String::new();
-    for i in (0..len+1) {
+    for i in 0..len+1 {
         if i == 0 {
             line.push('├');
         } else if i == len {
@@ -54,12 +53,12 @@ fn draw_mid_line(stdout : &mut std::io::Stdout, len : usize, state: &State) {
             line.push('─');
         }
     }
-    write!(stdout, "{}", line);
+    write!(stdout, "{}", line).unwrap();
 }
 
 fn draw_bot_line(stdout : &mut std::io::Stdout, len : usize, state: &State) {
     let mut line : String = String::new();
-    for i in (0..len+1) {
+    for i in 0..len+1 {
         if i == 0 {
             line.push('└');
         } else if i == len {
@@ -70,12 +69,12 @@ fn draw_bot_line(stdout : &mut std::io::Stdout, len : usize, state: &State) {
             line.push('─');
         }
     }
-    write!(stdout, "{}", line);
+    write!(stdout, "{}", line).unwrap();
 }
 
 fn draw_top_line(stdout : &mut std::io::Stdout, len : usize, state: &State) {
     let mut line : String = String::new();
-    for i in (0..len+1) {
+    for i in 0..len+1 {
         if i == 0 {
             line.push('┌');
         } else if i == len {
@@ -86,33 +85,19 @@ fn draw_top_line(stdout : &mut std::io::Stdout, len : usize, state: &State) {
             line.push('─');
         }
     }
-    write!(stdout, "{}", line);
+    write!(stdout, "{}", line).unwrap();
 }
 
 fn draw_header(stdout : &mut std::io::Stdout, state: &State) {
     let state = state.clone();
-    write!(stdout, "{}{}",cursor::Goto(2,2), state.filename);
-    let (width, height) = termion::terminal_size().unwrap();
-    write!(stdout, "{}{},{}",cursor::Goto(width-20,2), state.field.0, state.field.1);
-    write!(stdout, "{}{}",cursor::Goto(width-5,2), state.has_header);
+    write!(stdout, "{}{}",cursor::Goto(2,2), state.filename).unwrap();
+    let (width, _) = termion::terminal_size().unwrap();
+    write!(stdout, "{}{},{}",cursor::Goto(width-20,2), state.field.0, state.field.1).unwrap();
+    write!(stdout, "{}{}",cursor::Goto(width-5,2), state.has_header).unwrap();
 }
 
-// rewrite of draw_body
-// fn rdraw_body(stdout : &mut std::io::Stdout, state: &State) {
-//     let (w,h) = termion::terminal_size().unwrap(); // term width and height
-//     let cs : usize = state.cell_size;
-//     let (rc,cc) = ( // row count, col count
-//         (h - 6) / 3,
-//         (w - 2) / cs
-//     );
-//     let (tw,th) = ( // tweaked width and height
-//         cc * cs,
-//         (rc * 3) - 1
-//     );
-// }
-
 fn draw_body(stdout : &mut std::io::Stdout, state: &State) {
-    write!(stdout, "{}",cursor::Goto(2,4));
+    write!(stdout, "{}",cursor::Goto(2,4)).unwrap();
     let (width, height) = termion::terminal_size().unwrap();
     let the_width = state.data[0].len() * state.cell_size;
     let the_height = (state.data.len() * 2) + 1;
@@ -130,7 +115,7 @@ fn draw_body(stdout : &mut std::io::Stdout, state: &State) {
     };
 
     let resized_cell_number = resized_width / (state.cell_size as u16);
-    let resized_row_number = (resized_height / 2);
+    let resized_row_number = resized_height / 2;
 
     // skip, take
 
@@ -183,31 +168,37 @@ fn draw_body(stdout : &mut std::io::Stdout, state: &State) {
             }
 
             if icol == noctd - 1 {
-                write!(stdout, "{}│",cursor::Goto((resized_width+2) as u16,5+(irow*2) as u16));
+                write!(stdout, "{}│",cursor::Goto((resized_width+2) as u16,5+(irow*2) as u16)).unwrap();
             }
         }
         // write!(stdout, "{}", cursor::Down(1)).unwrap();
         if irow != 0 {
-            write!(stdout, "{}",cursor::Goto(2,4+(irow*2) as u16));
+            write!(stdout, "{}",cursor::Goto(2,4+(irow*2) as u16)).unwrap();
             draw_mid_line(stdout,resized_width as usize, &state);
         }
     }
+    draw_arrows(stdout,
+        (((state.field.1 as i16) + 1) - (nortd as i16)),
+        (((state.field.0 as i16) + 1) - (noctd as i16)),
+        2,
+        height - 2
+    );
     // write!(stdout, "{}",cursor::Goto(2,4+(state.data.len() * 2) as u16));
-    write!(stdout, "{}",cursor::Goto(2, ((nortd * 2)+4) as u16));
+    write!(stdout, "{}",cursor::Goto(2, ((nortd * 2)+4) as u16)).unwrap();
     draw_bot_line(stdout,resized_width as usize, &state);
 }
 
 fn draw_entry(stdout : &mut std::io::Stdout, state: &State) {
-    let (width, height) = termion::terminal_size().unwrap();
+    let (_, height) = termion::terminal_size().unwrap();
     match state.op {
         Operation::Editing => {
-            write!(stdout, "{}Editor: {}",cursor::Goto(2,height-2), state.editor_buffer);
+            write!(stdout, "{}Editor: {}",cursor::Goto(2,height-2), state.editor_buffer).unwrap();
         },
         Operation::GoingTo => {
-            write!(stdout, "{}Going to: {}",cursor::Goto(2,height-2), state.goto_buffer);
+            write!(stdout, "{}Going to: {}",cursor::Goto(2,height-2), state.goto_buffer).unwrap();
         },
         Operation::Resizing => {
-            write!(stdout, "{}New size: {}",cursor::Goto(2,height-2), state.resize_buffer);
+            write!(stdout, "{}New size: {}",cursor::Goto(2,height-2), state.resize_buffer).unwrap();
         },
         _ => ()
     }
@@ -217,19 +208,40 @@ fn draw_save_state(stdout : &mut std::io::Stdout, state: &State) {
     let (width, height) = termion::terminal_size().unwrap();
     match state.save_state {
         SaveState::Edited => {
-            write!(stdout, "{}edited",cursor::Goto(width-6,height-2));
+            write!(stdout, "{}edited",cursor::Goto(width-6,height-2)).unwrap();
         },
         SaveState::Saved => {
-            write!(stdout, "{}saved",cursor::Goto(width-6,height-2));
+            write!(stdout, "{}saved",cursor::Goto(width-6,height-2)).unwrap();
         },
     }
 }
 
-fn draw_arrows(stdout: &mut std::io::Stdout, state: &State, x: u16, y: u16) {
-		write!(stdout, "{}", cursor::Goto(x,y)).unwrap();
+fn draw_arrows(stdout: &mut std::io::Stdout, rsn: i16, csn: i16, x: u16, y: u16) {
+    let arrows : [&str;4] = ["▲","◀","▶","▼"];
+    let h_arrow = if csn == 0 {
+        "⚫"
+    } else if csn > 0 {
+        arrows[1]
+    } else {
+        arrows[2]
+    };
+
+    let v_arrow = if rsn == 0 {
+        "⚫"
+    } else if rsn > 0 {
+        arrows[0]
+    } else {
+        arrows[3]
+    };
+    write!(stdout, "{c} {v}  {h}",
+        c = cursor::Goto(x,y),
+        v = v_arrow,
+        h = h_arrow
+    ).unwrap();
 }
 
 fn draw_window(stdout : &mut std::io::Stdout, state: &State) {
+    // let (width, height) = termion::terminal_size().unwrap();
     write!(stdout,"{}{}",clear::All, cursor::Goto(1,1)).unwrap();
     draw_header(stdout, state);
     draw_body(stdout, state);
@@ -240,18 +252,9 @@ fn draw_window(stdout : &mut std::io::Stdout, state: &State) {
 }
 
 fn resize_data(data: &mut Vec<Vec<String>>, width: usize, height: usize) {
-    let row_number = data.len();
-    let col_number = data[0].len();
     for row in &mut data.iter_mut() { row.resize(width, "/".to_string()); }
     data.resize(height, vec!["/".to_string() ; width]);
 }
-
-// fn resize_rect(state: &mut State) {
-//     let (w,h) = termion::terminal_size().unwrap();
-//     let (tw,th) : (u16,u16) = (w-2,h-6);
-//     let cs : usize = state.cell_size;
-//     let (rn,cn) : (u16,u16) = ((th-1)/2,tw/cs);
-// }
 
 fn main() {
     use Operation;
@@ -266,7 +269,6 @@ fn main() {
         save_state: SaveState::Saved,
         goto_buffer : "".to_string(),
         resize_buffer : "".to_string(),
-        rect  : (0,0,1,1),
     };
     let args : Vec<String> = env::args().collect();
     if args.len() < 2 {
