@@ -23,11 +23,7 @@ pub fn write(lines: &Vec<Vec<String>>, filename : &Path) {
 // check if the file already exists
 pub fn check(filename : &Path) -> bool {
     match File::open(filename) {
-        Ok(file) => {
-            true
-        },
-        err => {
-            false
-        },
+        Ok(file) => true,
+        err => false,
     }
 }

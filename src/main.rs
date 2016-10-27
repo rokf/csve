@@ -36,10 +36,10 @@ struct State {
     save_state : SaveState,
     goto_buffer : String,
     resize_buffer : String,
+    rect : (u16, u16, u16, u16),
 }
 
 use termion::{color, cursor, clear};
-
 
 fn draw_mid_line(stdout : &mut std::io::Stdout, len : usize, state: &State) {
     let mut line : String = String::new();
@@ -97,13 +97,62 @@ fn draw_header(stdout : &mut std::io::Stdout, state: &State) {
     write!(stdout, "{}{}",cursor::Goto(width-5,2), state.has_header);
 }
 
+// rewrite of draw_body
+// fn rdraw_body(stdout : &mut std::io::Stdout, state: &State) {
+//     let (w,h) = termion::terminal_size().unwrap(); // term width and height
+//     let cs : usize = state.cell_size;
+//     let (rc,cc) = ( // row count, col count
+//         (h - 6) / 3,
+//         (w - 2) / cs
+//     );
+//     let (tw,th) = ( // tweaked width and height
+//         cc * cs,
+//         (rc * 3) - 1
+//     );
+// }
+
 fn draw_body(stdout : &mut std::io::Stdout, state: &State) {
     write!(stdout, "{}",cursor::Goto(2,4));
+    let (width, height) = termion::terminal_size().unwrap();
     let the_width = state.data[0].len() * state.cell_size;
-    draw_top_line(stdout, the_width, &state);
-    for (irow,row) in state.data.iter().enumerate() {
-        for (icol, col) in row.iter().enumerate() {
-            let colp = if col.len() < state.cell_size {
+    let the_height = (state.data.len() * 2) + 1;
+
+    let resized_height = if the_height < ((height - 6) as usize) {
+        the_height as u16
+    } else {
+        (height - 6) as u16
+    };
+
+    let resized_width = if the_width < (width as usize) {
+        the_width as u16
+    } else {
+        width - (width % (state.cell_size as u16))
+    };
+
+    let resized_cell_number = resized_width / (state.cell_size as u16);
+    let resized_row_number = (resized_height / 2);
+
+    // skip, take
+
+    let nortd = resized_row_number as usize; // number of rows to draw
+    let noctd = resized_cell_number as usize; // number of cols to draw
+
+    let cols_to_skip = if (((state.field.0 as i16) + 1) - (noctd as i16)) > 0 {
+        ((state.field.0 + 1) - noctd as u32)
+    } else {
+        0
+    };
+
+    let rows_to_skip = if (((state.field.1 as i16) + 1) - (nortd as i16)) > 0 {
+        ((state.field.1 + 1) - nortd as u32)
+    } else {
+        0
+    };
+
+    draw_top_line(stdout, resized_width as usize, &state);
+    for (irow,row) in state.data.iter().skip(rows_to_skip as usize).take(nortd).enumerate() {
+        for (icol, col) in row.iter().skip(cols_to_skip as usize).take(noctd).enumerate() {
+            let colp = if col.len() < state.cell_size { // shortened
                 col.to_string()
             } else {
                 let mut new_str = String::new();
@@ -111,41 +160,57 @@ fn draw_body(stdout : &mut std::io::Stdout, state: &State) {
                 new_str.push_str(&"→");
                 new_str
             };
-            if irow == state.field.1 as usize && icol == state.field.0 as usize {
-                write!(stdout, "{}│{}{}{}",cursor::Goto(2+(icol * state.cell_size) as u16, 5+(irow*2) as u16),color::Fg(color::Yellow),colp,color::Fg(color::Reset)).unwrap();
+
+            if (irow + rows_to_skip as usize) == state.field.1 as usize && (icol + cols_to_skip as usize) == state.field.0 as usize { // selected
+                write!(stdout, "{}│{}{}{}",
+	                cursor::Goto(2+(icol * state.cell_size) as u16, 5+(irow*2) as u16),
+	                color::Fg(color::Yellow),
+	                colp,color::Fg(color::Reset)
+                ).unwrap();
             }
-            else if irow == 0 && state.has_header == true {
-                write!(stdout, "{}│{}{}{}",cursor::Goto(2+(icol * state.cell_size) as u16, 5+(irow*2) as u16),color::Fg(color::Blue),colp,color::Fg(color::Reset)).unwrap();
-            } else {
-                write!(stdout, "{}│{}{}{}",cursor::Goto(2+(icol * state.cell_size) as u16, 5+(irow*2) as u16),color::Fg(color::White),colp,color::Fg(color::Reset)).unwrap();
+            else if irow == 0 && state.has_header == true && rows_to_skip == 0 { // header
+                write!(stdout, "{}│{}{}{}",
+	                cursor::Goto(2+(icol * state.cell_size) as u16, 5+(irow*2) as u16),
+	                color::Fg(color::Blue),
+	                colp,color::Fg(color::Reset)
+               	).unwrap();
+            } else { // normal
+                write!(stdout, "{}│{}{}{}",
+	                cursor::Goto(2+(icol * state.cell_size) as u16, 5+(irow*2) as u16),
+	                color::Fg(color::White),
+	                colp,color::Fg(color::Reset)
+                ).unwrap();
             }
-            if icol == row.len() - 1 {
-                write!(stdout, "{}│",cursor::Goto((the_width+2) as u16,5+(irow*2) as u16));
+
+            if icol == noctd - 1 {
+                write!(stdout, "{}│",cursor::Goto((resized_width+2) as u16,5+(irow*2) as u16));
             }
         }
         // write!(stdout, "{}", cursor::Down(1)).unwrap();
         if irow != 0 {
             write!(stdout, "{}",cursor::Goto(2,4+(irow*2) as u16));
-            draw_mid_line(stdout,the_width, &state);
+            draw_mid_line(stdout,resized_width as usize, &state);
         }
     }
-    write!(stdout, "{}",cursor::Goto(2,4+(state.data.len() * 2) as u16));
-    draw_bot_line(stdout,the_width, &state);
+    // write!(stdout, "{}",cursor::Goto(2,4+(state.data.len() * 2) as u16));
+    write!(stdout, "{}",cursor::Goto(2, ((nortd * 2)+4) as u16));
+    draw_bot_line(stdout,resized_width as usize, &state);
 }
 
-fn draw_editor(stdout : &mut std::io::Stdout, state: &State) {
+fn draw_entry(stdout : &mut std::io::Stdout, state: &State) {
     let (width, height) = termion::terminal_size().unwrap();
-    write!(stdout, "{}Editor: {}",cursor::Goto(2,height-2), state.editor_buffer);
-}
-
-fn draw_goto(stdout : &mut std::io::Stdout, state: &State) {
-    let (width, height) = termion::terminal_size().unwrap();
-    write!(stdout, "{}Going to: {}",cursor::Goto(2,height-2), state.goto_buffer);
-}
-
-fn draw_resize(stdout : &mut std::io::Stdout, state: &State) {
-    let (width, height) = termion::terminal_size().unwrap();
-    write!(stdout, "{}New size: {}",cursor::Goto(2,height-2), state.resize_buffer);
+    match state.op {
+        Operation::Editing => {
+            write!(stdout, "{}Editor: {}",cursor::Goto(2,height-2), state.editor_buffer);
+        },
+        Operation::GoingTo => {
+            write!(stdout, "{}Going to: {}",cursor::Goto(2,height-2), state.goto_buffer);
+        },
+        Operation::Resizing => {
+            write!(stdout, "{}New size: {}",cursor::Goto(2,height-2), state.resize_buffer);
+        },
+        _ => ()
+    }
 }
 
 fn draw_save_state(stdout : &mut std::io::Stdout, state: &State) {
@@ -160,16 +225,16 @@ fn draw_save_state(stdout : &mut std::io::Stdout, state: &State) {
     }
 }
 
+fn draw_arrows(stdout: &mut std::io::Stdout, state: &State, x: u16, y: u16) {
+		write!(stdout, "{}", cursor::Goto(x,y)).unwrap();
+}
+
 fn draw_window(stdout : &mut std::io::Stdout, state: &State) {
     write!(stdout,"{}{}",clear::All, cursor::Goto(1,1)).unwrap();
     draw_header(stdout, state);
     draw_body(stdout, state);
-    if state.op == Operation::Editing {
-        draw_editor(stdout, state);
-    } else if state.op == Operation::GoingTo {
-        draw_goto(stdout, state);
-    } else if state.op == Operation::Resizing {
-        draw_resize(stdout, state);
+    if state.op != Operation::NoOp {
+        draw_entry(stdout, state);
     }
     draw_save_state(stdout, state);
 }
@@ -177,12 +242,16 @@ fn draw_window(stdout : &mut std::io::Stdout, state: &State) {
 fn resize_data(data: &mut Vec<Vec<String>>, width: usize, height: usize) {
     let row_number = data.len();
     let col_number = data[0].len();
-    // let mut data_copy : Vec<Vec<String>> = data.iter().map(|d| d.resize(width, "/".to_string()) ).collect::<Vec<Vec<String>>>();
-    for row in &mut data.iter_mut() {
-        row.resize(width, "/".to_string());
-    }
+    for row in &mut data.iter_mut() { row.resize(width, "/".to_string()); }
     data.resize(height, vec!["/".to_string() ; width]);
 }
+
+// fn resize_rect(state: &mut State) {
+//     let (w,h) = termion::terminal_size().unwrap();
+//     let (tw,th) : (u16,u16) = (w-2,h-6);
+//     let cs : usize = state.cell_size;
+//     let (rn,cn) : (u16,u16) = ((th-1)/2,tw/cs);
+// }
 
 fn main() {
     use Operation;
@@ -197,6 +266,7 @@ fn main() {
         save_state: SaveState::Saved,
         goto_buffer : "".to_string(),
         resize_buffer : "".to_string(),
+        rect  : (0,0,1,1),
     };
     let args : Vec<String> = env::args().collect();
     if args.len() < 2 {
@@ -259,52 +329,93 @@ fn main() {
                     }
                 }
             },
-            Key::Ctrl('r') => {
-                // resize
+            Key::Ctrl('r') => { // resize
                 if state.op == Operation::NoOp {
                     state.op = Operation::Resizing;
                     state.resize_buffer.clear();
                 } else if state.op == Operation::Resizing {
                     state.op = Operation::NoOp;
-                    // resize here
                     let params : Vec<&str> = state.resize_buffer.split(",").collect();
                     let nums : Vec<usize> = params.iter().map(|p| {p.parse::<usize>().unwrap()}).collect();
                     if nums.len() == 2 {
-                        resize_data(&mut state.data, nums[0], nums[1])
+                        resize_data(&mut state.data, nums[0], nums[1]);
+                        state.field = (0,0);
                     } else {
                         println!("RESIZE: Wrong number of parameters.");
                     }
                 }
             }
             Key::Char(c) => {
-                if state.op == Operation::Editing {
-                    state.editor_buffer.push(c);
-                } else if state.op == Operation::GoingTo {
-                    state.goto_buffer.push(c);
-                } else if state.op == Operation::Resizing {
-                    state.resize_buffer.push(c);
+                if c == '\n' {
+                    match state.op {
+                        Operation::Editing => {
+                            state.op = Operation::NoOp;
+                            let (x,y) = state.field;
+                            state.data[y as usize][x as usize] = state.editor_buffer.to_string();
+                            state.save_state = SaveState::Edited;
+                        },
+                        Operation::GoingTo => {
+                            state.op = Operation::NoOp;
+                             let params : Vec<&str> = state.goto_buffer.split(",").collect();
+                             let nums : Vec<u32> = params.iter().map(|p| {p.parse::<u32>().unwrap()}).collect();
+                             if nums.len() == 2 {
+                                 state.field = (nums[0], nums[1]);
+                             } else {
+                                 println!("GOTO: Not enough parameters.");
+                             }
+                        },
+                        Operation::Resizing => {
+                            state.op = Operation::NoOp;
+                            let params : Vec<&str> = state.resize_buffer.split(",").collect();
+                            let nums : Vec<usize> = params.iter().map(|p| {p.parse::<usize>().unwrap()}).collect();
+                            if nums.len() == 2 {
+                                resize_data(&mut state.data, nums[0], nums[1]);
+                                state.field = (0,0);
+                            } else {
+                                println!("RESIZE: Wrong number of parameters.");
+                            }
+                        },
+                        _ => (),
+                    }
+                } else {
+                    match state.op {
+	                    Operation::Editing => state.editor_buffer.push(c),
+	                    Operation::GoingTo => state.goto_buffer.push(c),
+	                    Operation::Resizing => state.resize_buffer.push(c),
+	                    _ => (),
+                    }
                 }
             },
             Key::Backspace => {
-                if state.op == Operation::Editing {
-                    state.editor_buffer.pop();
-                } else if state.op == Operation::GoingTo {
-                    state.goto_buffer.pop();
-                } else if state.op == Operation::Resizing {
-                    state.resize_buffer.pop();
+                match state.op {
+                    Operation::Editing => {
+                        state.editor_buffer.pop();
+                        ()
+                    },
+                    Operation::GoingTo => {
+                        state.goto_buffer.pop();
+                        ()
+                    },
+                    Operation::Resizing => {
+                        state.resize_buffer.pop();
+                        ()
+                    },
+                    _ => (),
                 }
             },
-            Key::Ctrl('s') => { // save
-                coms::write(&state.data, Path::new(filename));
-                state.save_state = SaveState::Saved;
-            }
+            Key::Ctrl('s') => {
+                if state.save_state == SaveState::Edited {
+                    coms::write(&state.data, Path::new(filename));
+                    state.save_state = SaveState::Saved;
+                }
+            },
             Key::Left => {
                 if state.field.0 > 0 && state.op == Operation::NoOp {
                     state.field.0 -= 1
                 }
             },
             Key::Right => {
-                if state.op == Operation::NoOp {
+                if state.op == Operation::NoOp && state.field.0 < (state.data[0].len()-1) as u32 {
                     state.field.0 += 1
                 }
             },
@@ -314,7 +425,7 @@ fn main() {
                 }
             },
             Key::Down => {
-                if state.op == Operation::NoOp {
+                if state.op == Operation::NoOp && state.field.1 < (state.data.len()-1) as u32 {
                     state.field.1 += 1;
                 }
             },
